@@ -56,6 +56,7 @@ function clampPetScale(scale) {
 function defaultPetWindowState(petId) {
   return {
     petId,
+    petScale: 1,
     companionMode: false,
     bubbleEditorOpen: false
   };
@@ -66,17 +67,17 @@ function defaultState() {
     alwaysOnTop: true,
     openAtLogin: true,
     bubbleEnabled: true,
-    petScale: 1,
     hideDockIcon: false,
     petWindows: [defaultPetWindowState("doolbyeong")]
   };
 }
 
-function normalizePetWindowState(entry) {
+function normalizePetWindowState(entry, fallbackPetScale = 1) {
   if (!entry || !PET_ID_SET.has(entry.petId)) return null;
 
   const next = {
     ...defaultPetWindowState(entry.petId),
+    petScale: clampPetScale(entry.petScale ?? fallbackPetScale),
     companionMode: Boolean(entry.companionMode),
     bubbleEditorOpen: false
   };
@@ -91,10 +92,11 @@ function normalizeState(savedState) {
   const base = defaultState();
   const seen = new Set();
   const petWindowsState = [];
+  const migratedPetScale = clampPetScale(savedState.petScale);
 
   if (Array.isArray(savedState.petWindows)) {
     for (const entry of savedState.petWindows) {
-      const normalized = normalizePetWindowState(entry);
+      const normalized = normalizePetWindowState(entry, migratedPetScale);
       if (!normalized || seen.has(normalized.petId)) continue;
       seen.add(normalized.petId);
       petWindowsState.push(normalized);
@@ -106,6 +108,7 @@ function normalizeState(savedState) {
       petId: savedState.selectedPetId,
       x: savedState.x,
       y: savedState.y,
+      petScale: migratedPetScale,
       companionMode: savedState.companionMode
     });
     if (migrated) {
@@ -119,7 +122,6 @@ function normalizeState(savedState) {
     alwaysOnTop: savedState.alwaysOnTop === undefined ? base.alwaysOnTop : Boolean(savedState.alwaysOnTop),
     openAtLogin: savedState.openAtLogin === undefined ? base.openAtLogin : Boolean(savedState.openAtLogin),
     bubbleEnabled: savedState.bubbleEnabled === undefined ? base.bubbleEnabled : Boolean(savedState.bubbleEnabled),
-    petScale: clampPetScale(savedState.petScale),
     hideDockIcon: Boolean(savedState.hideDockIcon),
     petWindows: petWindowsState
   };
@@ -181,7 +183,7 @@ function getWindowSizeForPetScale(scale, options = {}) {
 
 function getWindowSizeForPet(petId) {
   const petState = ensurePetWindowState(petId);
-  return getWindowSizeForPetScale(currentState.petScale, {
+  return getWindowSizeForPetScale(petState.petScale, {
     companionMode: petState.companionMode,
     bubbleEditorOpen: petState.bubbleEditorOpen
   });
@@ -248,7 +250,7 @@ function sendShellSettings(window) {
     petId: window.petId,
     activePetIds: listActivePetIds(),
     hideDockIcon: currentState.hideDockIcon,
-    petScale: currentState.petScale
+    petScale: petState.petScale
   });
 }
 
@@ -266,11 +268,28 @@ function broadcastBubbleEnabled() {
   }
 }
 
+function createMacTrayIcon() {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44">
+      <rect x="4" y="4" width="36" height="36" rx="9" fill="#ffffff"/>
+      <rect x="5.5" y="5.5" width="33" height="33" rx="7.5" fill="none" stroke="#111111" stroke-width="3"/>
+      <text x="22" y="29" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif" font-size="21" font-weight="800" fill="#111111">R</text>
+    </svg>
+  `.trim();
+  const icon = nativeImage.createFromDataURL(`data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`);
+  const trayIcon = icon.resize({ width: 22, height: 22, quality: "best" });
+  trayIcon.setTemplateImage(false);
+  return trayIcon;
+}
+
 function createTrayIcon() {
+  if (process.platform === "darwin") {
+    return createMacTrayIcon();
+  }
+
   const fileIcon = loadAppIcon();
   if (fileIcon) {
-    const size = process.platform === "darwin" ? 18 : 32;
-    const trayIcon = fileIcon.resize({ width: size, height: size, quality: "best" });
+    const trayIcon = fileIcon.resize({ width: 32, height: 32, quality: "best" });
     trayIcon.setTemplateImage(false);
     return trayIcon;
   }
@@ -315,10 +334,15 @@ function showPetWindow(petId) {
 function showAllPets() {
   let firstWindow = null;
 
-  for (const petId of listActivePetIds()) {
+  for (const { id: petId } of PET_OPTIONS) {
+    ensurePetWindowState(petId);
     const window = showPetWindow(petId);
     if (!firstWindow) firstWindow = window;
   }
+
+  writeWindowState();
+  refreshTrayMenu();
+  broadcastSettings();
 
   if (firstWindow && !firstWindow.isDestroyed()) {
     firstWindow.focus();
@@ -417,16 +441,16 @@ function applyDockVisibility(hideDockIcon) {
   broadcastSettings();
 }
 
-function setPetScale(scale) {
-  currentState.petScale = clampPetScale(scale);
+function setPetScale(window, scale) {
+  if (!window || window.isDestroyed()) return 1;
 
-  for (const window of petWindows.values()) {
-    applyWindowSizeForPet(window, "center");
-  }
+  const petState = ensurePetWindowState(window.petId);
+  petState.petScale = clampPetScale(scale);
+  applyWindowSizeForPet(window, "center");
 
   writeWindowState();
-  refreshTrayMenu();
-  broadcastSettings();
+  sendShellSettings(window);
+  return petState.petScale;
 }
 
 function setCompanionMode(window, enabled) {
@@ -542,8 +566,7 @@ function refreshTrayMenu() {
     {
       label: "Show All Pets",
       click: () => {
-        if (!currentState.petWindows.length) addPetToDesktop(PET_OPTIONS[0].id);
-        else showAllPets();
+        showAllPets();
       }
     },
     { label: "Hide All Pets", click: () => hideAllPets() },
@@ -700,8 +723,8 @@ ipcMain.handle("shell:toggle-always-on-top", () => {
 });
 
 ipcMain.handle("shell:set-pet-scale", (_event, scale) => {
-  setPetScale(scale);
-  return { petScale: currentState.petScale };
+  const window = getEventWindow(_event);
+  return { petScale: setPetScale(window, scale) };
 });
 
 ipcMain.handle("shell:set-companion-mode", (event, enabled) => {
@@ -753,7 +776,7 @@ ipcMain.handle("shell:get-settings", (event) => {
     petId: window?.petId || currentState.petWindows[0]?.petId || PET_OPTIONS[0].id,
     activePetIds: listActivePetIds(),
     hideDockIcon: currentState.hideDockIcon,
-    petScale: currentState.petScale
+    petScale: petState.petScale
   };
 });
 

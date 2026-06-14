@@ -49,6 +49,7 @@ const state = {
   controlsHoverOpen: false,
   companionMode: false,
   bubbleEditorOpen: false,
+  nameEditorOpen: false,
   bubbleDraftLines: [],
   selectedBubbleLineIndex: 0,
   bubbleLineEditMode: null,
@@ -60,7 +61,7 @@ const state = {
     activePetIds: [pets[0].id],
     hideDockIcon: false
   },
-  petScale: Number(window.localStorage.getItem("desktopPetScale") || "1")
+  petScale: 1
 };
 
 const petTitle = document.querySelector("#petTitle");
@@ -81,9 +82,16 @@ const bubbleToggleButton = document.querySelector("#bubbleToggleButton");
 const companionButton = document.querySelector("#companionButton");
 const idleButton = document.querySelector("#idleButton");
 const scaleButton = document.querySelector("#scaleButton");
+const renamePetButton = document.querySelector("#renamePetButton");
 const editBubbleButton = document.querySelector("#editBubbleButton");
 const bubbleEditorModal = document.querySelector("#bubbleEditorModal");
 const bubbleEditorBackdrop = document.querySelector("#bubbleEditorBackdrop");
+const nameEditorModal = document.querySelector("#nameEditorModal");
+const nameEditorBackdrop = document.querySelector("#nameEditorBackdrop");
+const petNameInput = document.querySelector("#petNameInput");
+const savePetNameButton = document.querySelector("#savePetNameButton");
+const resetPetNameButton = document.querySelector("#resetPetNameButton");
+const cancelPetNameButton = document.querySelector("#cancelPetNameButton");
 const bubbleLineList = document.querySelector("#bubbleLineList");
 const bubbleLineForm = document.querySelector("#bubbleLineForm");
 const bubbleLineInput = document.querySelector("#bubbleLineInput");
@@ -101,6 +109,8 @@ petCanvas.height = ATLAS.cellHeight * 2;
 
 const imageCache = new Map();
 const BUBBLE_TEXT_STORAGE_KEY = "desktopPetCustomBubbleText";
+const PET_NAME_STORAGE_KEY = "desktopPetCustomNames";
+const PET_NAME_MAX_LENGTH = 12;
 const PET_SCALE_STEPS = [0.35, 0.5, 0.65, 0.8, 1];
 const DEFAULT_ACTION = "idle";
 
@@ -120,6 +130,39 @@ function writeBubbleOverrides(overrides) {
   window.localStorage.setItem(BUBBLE_TEXT_STORAGE_KEY, JSON.stringify(overrides));
 }
 
+function readNameOverrides() {
+  try {
+    return JSON.parse(window.localStorage.getItem(PET_NAME_STORAGE_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function writeNameOverrides(overrides) {
+  window.localStorage.setItem(PET_NAME_STORAGE_KEY, JSON.stringify(overrides));
+}
+
+function getPetDisplayName(pet) {
+  const overrides = readNameOverrides();
+  const customName = String(overrides[pet.id] || "").trim();
+  return customName || pet.name;
+}
+
+function fitPetTitle() {
+  petTitle.style.fontSize = "";
+  let size = 9;
+  while (petTitle.scrollWidth > petTitle.clientWidth && size > 7) {
+    size -= 0.5;
+    petTitle.style.fontSize = `${size}px`;
+  }
+}
+
+function setPetTitleText(text) {
+  petTitle.textContent = text;
+  petTitle.title = text;
+  window.requestAnimationFrame(fitPetTitle);
+}
+
 function getBubbleLinesForPet(pet) {
   const overrides = readBubbleOverrides();
   const custom = overrides[pet.id];
@@ -130,7 +173,6 @@ function getBubbleLinesForPet(pet) {
 function setPetScale(nextScale, options = {}) {
   state.petScale = Math.min(1, Math.max(0.35, nextScale));
   document.documentElement.style.setProperty("--pet-scale", String(state.petScale));
-  window.localStorage.setItem("desktopPetScale", String(state.petScale));
   if (options.syncShell !== false && window.desktopPetShell) {
     window.desktopPetShell.setPetScale(state.petScale);
   }
@@ -147,6 +189,39 @@ function cyclePetScale() {
   const currentIndex = PET_SCALE_STEPS.findIndex((step) => Math.abs(step - state.petScale) < 0.05);
   const nextIndex = currentIndex === -1 ? 1 : (currentIndex + 1) % PET_SCALE_STEPS.length;
   setPetScale(PET_SCALE_STEPS[nextIndex]);
+}
+
+function openPetNameEditor() {
+  state.nameEditorOpen = true;
+  state.controlsOpen = false;
+  state.controlsHoverOpen = false;
+  petNameInput.value = getPetDisplayName(state.selectedPet);
+  renderShellControls();
+  window.setTimeout(() => {
+    petNameInput.focus();
+    petNameInput.select();
+  }, 40);
+}
+
+function closePetNameEditor() {
+  state.nameEditorOpen = false;
+  renderShellControls();
+}
+
+function savePetNameFromEditor() {
+  const pet = state.selectedPet;
+  const nextName = petNameInput.value;
+
+  const overrides = readNameOverrides();
+  const normalized = nextName.trim();
+  if (normalized) {
+    overrides[pet.id] = normalized.slice(0, PET_NAME_MAX_LENGTH);
+  } else {
+    delete overrides[pet.id];
+  }
+  writeNameOverrides(overrides);
+  render();
+  closePetNameEditor();
 }
 
 function randomBetween(min, max) {
@@ -426,6 +501,9 @@ function setCompanionMode(enabled) {
   if (state.companionMode) {
     state.controlsOpen = false;
     state.controlsHoverOpen = false;
+    if (state.nameEditorOpen) {
+      state.nameEditorOpen = false;
+    }
     if (state.bubbleEditorOpen) {
       state.bubbleEditorOpen = false;
       state.bubbleLineEditMode = null;
@@ -456,6 +534,7 @@ function ensureBubbleContent() {
 
 function renderShellControls() {
   document.body.classList.toggle("bubble-editor-open", state.bubbleEditorOpen);
+  document.body.classList.toggle("name-editor-open", state.nameEditorOpen);
   document.body.classList.toggle("bubbles-off", !state.shellSettings.bubbleEnabled);
   document.body.classList.toggle("companion-mode", state.companionMode);
   document.body.classList.toggle("controls-visible", !state.companionMode && (state.controlsOpen || state.controlsHoverOpen));
@@ -465,6 +544,7 @@ function renderShellControls() {
   companionButton.title = state.companionMode ? "Exit Companion Mode by double-clicking pet" : "Companion Mode";
   companionButton.setAttribute("aria-label", companionButton.title);
   bubbleEditorModal.setAttribute("aria-hidden", String(!state.bubbleEditorOpen));
+  nameEditorModal.setAttribute("aria-hidden", String(!state.nameEditorOpen));
   ensureBubbleContent();
 }
 
@@ -473,7 +553,7 @@ function render() {
   document.documentElement.style.setProperty("--pet-primary", pet.theme.primary);
   document.documentElement.style.setProperty("--pet-secondary", pet.theme.secondary);
   document.documentElement.style.setProperty("--pet-accent", pet.theme.accent);
-  petTitle.textContent = pet.name;
+  setPetTitleText(getPetDisplayName(pet));
   setBubbleText(state.shellSettings.bubbleEnabled ? getCurrentLines()[state.bubbleIndex] : "");
   renderBubbleEditor();
   renderActionButtons();
@@ -514,6 +594,38 @@ idleButton.addEventListener("click", () => {
 
 scaleButton.addEventListener("click", () => {
   cyclePetScale();
+});
+
+renamePetButton.addEventListener("click", () => {
+  openPetNameEditor();
+});
+
+savePetNameButton.addEventListener("click", () => {
+  savePetNameFromEditor();
+});
+
+resetPetNameButton.addEventListener("click", () => {
+  petNameInput.value = "";
+  savePetNameFromEditor();
+});
+
+cancelPetNameButton.addEventListener("click", () => {
+  closePetNameEditor();
+});
+
+nameEditorBackdrop.addEventListener("click", () => {
+  closePetNameEditor();
+});
+
+petNameInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    savePetNameFromEditor();
+  }
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closePetNameEditor();
+  }
 });
 
 editBubbleButton.addEventListener("click", async () => {
@@ -704,7 +816,7 @@ petCluster.addEventListener("dblclick", (event) => {
 });
 
 document.addEventListener("click", (event) => {
-  const clickedInsideControls = event.target.closest(".action-bar, .bubble-editor-dialog");
+  const clickedInsideControls = event.target.closest(".action-bar, .bubble-editor-dialog, .name-editor-dialog");
   const clickedPet = event.target.closest("#petButton");
   if (clickedPet) {
     return;
@@ -717,6 +829,9 @@ document.addEventListener("click", (event) => {
 });
 
 window.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.nameEditorOpen) {
+    closePetNameEditor();
+  }
   if (event.key === "Escape" && state.bubbleEditorOpen) {
     closeBubbleEditor();
   }

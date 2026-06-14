@@ -1,6 +1,6 @@
 {
   "name": "riize-pets",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "private": true,
   "description": "Electron desktop pet shell wired to six finalized RIIZE pet atlases.",
   "author": "RIIZE Pets",
@@ -68,10 +68,10 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "artifactName": "RIIZE-Pets-win7-Setup-${version}.${ext}"
+      "artifactName": "RIIZE-Pets-win11-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "RIIZE-Pets-win7-${version}.${ext}"
+      "artifactName": "RIIZE-Pets-win11-${version}.${ext}"
     }
   }
 }
