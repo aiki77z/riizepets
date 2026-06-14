@@ -377,8 +377,8 @@
           </p>
 
           <div class="actions">
-            <a class="button primary" href="https://github.com/aiki77z/riizepets/releases/latest/download/RIIZE-Pets-win11-Setup-1.0.3.exe">Download for Windows 11</a>
-            <a class="button secondary" href="https://github.com/aiki77z/riizepets/releases/latest">macOS / All Releases</a>
+            <a class="button primary" id="downloadWindows" href="https://github.com/aiki77z/riizepets/releases/latest">Download for Windows 11</a>
+            <a class="button secondary" id="downloadMac" href="https://github.com/aiki77z/riizepets/releases/latest">macOS / All Releases</a>
           </div>
 
           <div class="star-panel">
@@ -408,19 +408,19 @@
             </div>
 
             <div class="download-card">
-              <strong>Latest version: 1.0.3</strong>
-              <p>Windows 11 安装包可直接下载。macOS 版本从 GitHub Releases 下载，对应 Apple Silicon 和 Intel 两类构建。</p>
+              <strong id="latestVersion">Latest version</strong>
+              <p id="latestNote">Windows 11 安装包可直接下载。macOS 版本从 GitHub Releases 下载，对应 Apple Silicon 和 Intel 两类构建。</p>
             </div>
           </div>
         </section>
       </main>
 
       <section class="links" aria-label="Download links">
-        <a class="link-card" href="https://github.com/aiki77z/riizepets/releases/latest/download/RIIZE-Pets-win11-Setup-1.0.3.exe">
+        <a class="link-card" id="windowsInstallerLink" href="https://github.com/aiki77z/riizepets/releases/latest">
           <b>Windows Installer</b>
           <span>推荐下载。适合大多数 Windows 11 用户。</span>
         </a>
-        <a class="link-card" href="https://github.com/aiki77z/riizepets/releases/latest/download/RIIZE-Pets-win11-1.0.3.exe">
+        <a class="link-card" id="windowsPortableLink" href="https://github.com/aiki77z/riizepets/releases/latest">
           <b>Windows Portable</b>
           <span>免安装版本，下载后直接运行。</span>
         </a>
@@ -434,5 +434,51 @@
         GitHub Pages: https://aiki77z.github.io/riizepets/
       </footer>
     </div>
+    <script>
+      const repo = "aiki77z/riizepets";
+      const latestReleaseUrl = `https://github.com/${repo}/releases/latest`;
+      const apiUrl = `https://api.github.com/repos/${repo}/releases/latest`;
+
+      const downloadWindows = document.querySelector("#downloadWindows");
+      const downloadMac = document.querySelector("#downloadMac");
+      const windowsInstallerLink = document.querySelector("#windowsInstallerLink");
+      const windowsPortableLink = document.querySelector("#windowsPortableLink");
+      const latestVersion = document.querySelector("#latestVersion");
+      const latestNote = document.querySelector("#latestNote");
+
+      function findAsset(assets, pattern) {
+        return assets.find((asset) => pattern.test(asset.name));
+      }
+
+      fetch(apiUrl)
+        .then((response) => {
+          if (!response.ok) throw new Error("Latest release unavailable");
+          return response.json();
+        })
+        .then((release) => {
+          const assets = Array.isArray(release.assets) ? release.assets : [];
+          const installer = findAsset(assets, /^RIIZE-Pets-win11-Setup-.*\.exe$/i);
+          const portable = findAsset(assets, /^RIIZE-Pets-win11-(?!Setup).*\.exe$/i);
+          const macAsset = findAsset(assets, /\.dmg$/i) || findAsset(assets, /-mac\.zip$/i);
+
+          latestVersion.textContent = `Latest version: ${release.tag_name || "latest"}`;
+          latestNote.textContent = "下载按钮已自动指向 GitHub 最新 Release。";
+
+          if (installer) {
+            downloadWindows.href = installer.browser_download_url;
+            windowsInstallerLink.href = installer.browser_download_url;
+          }
+
+          if (portable) {
+            windowsPortableLink.href = portable.browser_download_url;
+          }
+
+          downloadMac.href = macAsset ? macAsset.browser_download_url : latestReleaseUrl;
+        })
+        .catch(() => {
+          latestVersion.textContent = "Latest version: GitHub Releases";
+          latestNote.textContent = "如果自动读取失败，按钮会打开 Releases 页面，请手动选择最新版本。";
+        });
+    </script>
   </body>
 </html>
