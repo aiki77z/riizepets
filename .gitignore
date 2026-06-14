@@ -30,12 +30,9 @@ Desktop.ini
 .vscode/
 .idea/
 
-# Keep generated pet working files local. Only final webp atlases are needed.
+# Keep generated pet assets and working files local.
 */reference/
-*/hatch-run/*
-!*/hatch-run/final/
-*/hatch-run/final/*
-!*/hatch-run/final/spritesheet.webp
+*/hatch-run/
 
 # Keep source logo drops local; packaged icons live in build/.
 riize_logo_mac.icns
