@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const WINDOW_STATE_FILE = "window-state.json";
+const APP_DISPLAY_NAME = "RIIZE Pets";
 const PET_SCALE_LIMITS = { min: 0.35, max: 1 };
 const PET_ASPECT_RATIO = 384 / 416;
 const PET_OPTIONS = [
@@ -13,6 +14,7 @@ const PET_OPTIONS = [
   { id: "tonangdeok", label: "Tonangdeok" },
   { id: "urakbam", label: "Urakbam" }
 ];
+const DEFAULT_PET_ID = "rizuko";
 const PET_ID_SET = new Set(PET_OPTIONS.map((pet) => pet.id));
 
 let tray = null;
@@ -21,6 +23,8 @@ let currentState = null;
 const petWindows = new Map();
 const dragSessions = new Map();
 const closingPets = new Set();
+
+app.setName(APP_DISPLAY_NAME);
 
 function getPackagedIconPath() {
   return path.join(process.resourcesPath, process.platform === "darwin" ? "icon.icns" : "icon.ico");
@@ -68,7 +72,7 @@ function defaultState() {
     openAtLogin: true,
     bubbleEnabled: true,
     hideDockIcon: false,
-    petWindows: [defaultPetWindowState("doolbyeong")]
+    petWindows: [defaultPetWindowState(DEFAULT_PET_ID)]
   };
 }
 
@@ -549,10 +553,8 @@ function removePetFromDesktop(petId) {
   broadcastSettings();
 }
 
-function refreshTrayMenu() {
-  if (!tray) return;
-
-  const petSubmenu = PET_OPTIONS.map((pet) => ({
+function buildPetSelectionSubmenu() {
+  return PET_OPTIONS.map((pet) => ({
     label: pet.label,
     type: "checkbox",
     checked: Boolean(getPetWindowState(pet.id)),
@@ -561,8 +563,10 @@ function refreshTrayMenu() {
       else removePetFromDesktop(pet.id);
     }
   }));
+}
 
-  const menuTemplate = [
+function buildPetControlMenuItems() {
+  const menuItems = [
     {
       label: "Show All Pets",
       click: () => {
@@ -571,7 +575,7 @@ function refreshTrayMenu() {
     },
     { label: "Hide All Pets", click: () => hideAllPets() },
     { type: "separator" },
-    { label: "Pets On Desktop", submenu: petSubmenu },
+    { label: "Choose Pet", submenu: buildPetSelectionSubmenu() },
     {
       label: "Show Bubbles",
       type: "checkbox",
@@ -587,7 +591,7 @@ function refreshTrayMenu() {
   ];
 
   if (process.platform === "darwin" || process.platform === "win32") {
-    menuTemplate.push({
+    menuItems.push({
       label: getHideAppIconLabel(),
       type: "checkbox",
       checked: currentState.hideDockIcon,
@@ -595,7 +599,7 @@ function refreshTrayMenu() {
     });
   }
 
-  menuTemplate.push(
+  menuItems.push(
     {
       label: "Open At Login",
       type: "checkbox",
@@ -603,7 +607,65 @@ function refreshTrayMenu() {
       click: (item) => applyLoginItemSetting(item.checked)
     },
     { label: "Reset Positions", click: () => resetAllPetPositions() },
-    { type: "separator" },
+    { type: "separator" }
+  );
+
+  return menuItems;
+}
+
+function buildAppMenuTemplate() {
+  if (process.platform !== "darwin") {
+    return null;
+  }
+
+  return [
+    {
+      label: app.name,
+      submenu: [
+        { role: "about", label: `About ${APP_DISPLAY_NAME}` },
+        { type: "separator" },
+        ...buildPetControlMenuItems(),
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        {
+          label: `Quit ${APP_DISPLAY_NAME}`,
+          accelerator: "Command+Q",
+          click: () => {
+            isQuitting = true;
+            app.quit();
+          }
+        }
+      ]
+    },
+    { role: "fileMenu" },
+    { role: "editMenu" },
+    { role: "viewMenu" },
+    { role: "windowMenu" },
+    { role: "help" }
+  ];
+}
+
+function refreshApplicationMenu() {
+  const appMenuTemplate = buildAppMenuTemplate();
+  if (appMenuTemplate) {
+    Menu.setApplicationMenu(Menu.buildFromTemplate(appMenuTemplate));
+  }
+}
+
+function refreshTrayMenu() {
+  if (process.platform === "darwin") {
+    refreshApplicationMenu();
+    return;
+  }
+
+  if (!tray) return;
+
+  const menuTemplate = [
+    ...buildPetControlMenuItems(),
     {
       label: "Quit",
       click: () => {
@@ -611,17 +673,22 @@ function refreshTrayMenu() {
         app.quit();
       }
     }
-  );
+  ];
 
   tray.setContextMenu(Menu.buildFromTemplate(menuTemplate));
 }
 
 function createTray() {
+  if (process.platform === "darwin") {
+    refreshApplicationMenu();
+    return;
+  }
+
   tray = new Tray(createTrayIcon());
   tray.setToolTip("RIIZE Pets");
   tray.on("click", () => {
     if (!currentState.petWindows.length) {
-      addPetToDesktop(PET_OPTIONS[0].id);
+      addPetToDesktop(DEFAULT_PET_ID);
       return;
     }
 
@@ -767,13 +834,13 @@ ipcMain.handle("shell:quit", () => {
 
 ipcMain.handle("shell:get-settings", (event) => {
   const window = getEventWindow(event);
-  const petState = window?.petId ? ensurePetWindowState(window.petId) : defaultPetWindowState(PET_OPTIONS[0].id);
+  const petState = window?.petId ? ensurePetWindowState(window.petId) : defaultPetWindowState(DEFAULT_PET_ID);
   return {
     alwaysOnTop: currentState.alwaysOnTop,
     openAtLogin: currentState.openAtLogin,
     bubbleEnabled: currentState.bubbleEnabled,
     companionMode: petState.companionMode,
-    petId: window?.petId || currentState.petWindows[0]?.petId || PET_OPTIONS[0].id,
+    petId: window?.petId || currentState.petWindows[0]?.petId || DEFAULT_PET_ID,
     activePetIds: listActivePetIds(),
     hideDockIcon: currentState.hideDockIcon,
     petScale: petState.petScale
@@ -797,7 +864,7 @@ if (!gotSingleInstanceLock) {
 } else {
   app.on("second-instance", () => {
     if (!currentState.petWindows.length) {
-      addPetToDesktop(PET_OPTIONS[0].id);
+      addPetToDesktop(DEFAULT_PET_ID);
       return;
     }
     showAllPets();
@@ -820,7 +887,7 @@ if (!gotSingleInstanceLock) {
 
     app.on("activate", () => {
       if (!currentState.petWindows.length) {
-        addPetToDesktop(PET_OPTIONS[0].id);
+        addPetToDesktop(DEFAULT_PET_ID);
       } else if (BrowserWindow.getAllWindows().length === 0) {
         for (const petId of listActivePetIds()) {
           createPetWindow(petId);
