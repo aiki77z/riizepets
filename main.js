@@ -804,6 +804,14 @@ ipcMain.handle("shell:set-bubble-editor-open", (event, open) => {
   return { bubbleEditorOpen: setBubbleEditorOpen(window, open) };
 });
 
+ipcMain.handle("shell:set-pet-input-transparent", (event, transparent) => {
+  const window = getEventWindow(event);
+  if (window && !window.isDestroyed()) {
+    window.setIgnoreMouseEvents(Boolean(transparent), { forward: true });
+  }
+  return { ok: true };
+});
+
 ipcMain.handle("shell:start-window-drag", (event) => {
   return { ok: startWindowDrag(getEventWindow(event)) };
 });

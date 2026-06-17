@@ -8,6 +8,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
+    "serve:ipad": "python -m http.server 4173 --bind 0.0.0.0",
     "dist:win": "electron-builder --win --x64 --publish never",
     "dist:mac": "electron-builder --mac dmg zip"
   },

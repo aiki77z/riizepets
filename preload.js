@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld("desktopPetShell", {
   setPetScale: (scale) => ipcRenderer.invoke("shell:set-pet-scale", scale),
   setCompanionMode: (enabled) => ipcRenderer.invoke("shell:set-companion-mode", enabled),
   setBubbleEditorOpen: (open) => ipcRenderer.invoke("shell:set-bubble-editor-open", open),
+  setPetInputTransparent: (transparent) => ipcRenderer.invoke("shell:set-pet-input-transparent", transparent),
   startWindowDrag: () => ipcRenderer.invoke("shell:start-window-drag"),
   stopWindowDrag: () => ipcRenderer.invoke("shell:stop-window-drag"),
   onSettings: (callback) => ipcRenderer.on("shell:settings", (_event, payload) => callback(payload)),

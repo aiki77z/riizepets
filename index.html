@@ -2,9 +2,12 @@
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>RIIZE Pets</title>
-    <link rel="stylesheet" href="./styles.css">
+    <meta name="theme-color" content="#f4efe7">
+    <link rel="manifest" href="./manifest.webmanifest">
+    <link rel="apple-touch-icon" href="./build/icon.ico">
+    <link rel="stylesheet" href="./styles.css?v=20260616-ipad">
   </head>
   <body>
     <main class="app-shell">
@@ -42,6 +45,7 @@
           <button class="action-button" data-action="running" type="button">Busy</button>
           <button class="action-button" data-action="review" type="button">Review</button>
         </div>
+        <div class="pet-picker" id="petPicker" aria-label="Choose pet"></div>
       </section>
     </main>
 
@@ -94,7 +98,7 @@
       </section>
     </div>
 
-    <script src="./pet-data.js"></script>
-    <script src="./app.js"></script>
+    <script src="./pet-data.js?v=20260616-ipad"></script>
+    <script src="./app.js?v=20260616-ipad"></script>
   </body>
 </html>
